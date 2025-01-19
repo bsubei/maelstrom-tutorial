@@ -17,6 +17,16 @@ enum MessageBody {
         msg_id: Option<usize>,
         in_reply_to: Option<usize>,
     },
+    Echo {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+        echo: String,
+    },
+    EchoOk {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+        echo: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,6 +67,27 @@ fn send_init_reply(mut node_state: &mut NodeState, original_msg: Message) {
     }
 }
 
+fn send_echo_reply(mut node_state: &mut NodeState, original_msg: Message) {
+    match original_msg.body {
+        MessageBody::Echo { msg_id, echo, .. } => {
+            let reply = Message {
+                src: node_state.id.clone(),
+                dest: original_msg.src,
+                body: MessageBody::EchoOk {
+                    msg_id: Some(node_state.next_msg_id),
+                    in_reply_to: msg_id,
+                    echo,
+                },
+            };
+
+            eprintln!("Sending reply: {reply:?}");
+            send(&mut node_state, &reply);
+            eprintln!("Finished sending reply: {reply:?}");
+        }
+        _ => panic!("Cannot send an echo reply to a non-echo message: {original_msg:?}"),
+    }
+}
+
 fn main() {
     let stdin = io::stdin();
 
@@ -74,6 +105,11 @@ fn main() {
 
                     // Reply back with an init_ok.
                     send_init_reply(&mut node_state, msg);
+                }
+                MessageBody::Echo { .. } => {
+                    eprintln!("Got Echo message: {msg:?}");
+
+                    send_echo_reply(&mut node_state, msg);
                 }
                 _ => todo!(),
             };
