@@ -7,15 +7,23 @@ pub struct Node {
     pub next_msg_id: usize,
 }
 
-impl Node {}
+impl Node {
+    pub fn log(&mut self, text: &str) -> () {
+        eprintln!("{}", text);
+    }
 
-fn send(node: &mut Node, msg: &Message) -> () {
-    node.next_msg_id += 1;
+    fn send(&mut self, msg: &Message) -> () {
+        self.next_msg_id += 1;
 
-    println!("{}", serde_json::to_string(&msg).unwrap());
+        self.log(&format!("Sending reply: {msg:?}"));
+
+        println!("{}", serde_json::to_string(&msg).unwrap());
+
+        self.log(&format!("Finished sending reply: {msg:?}"));
+    }
 }
 
-pub fn send_init_reply(mut node: &mut Node, original_msg: Message) {
+pub fn send_init_reply(node: &mut Node, original_msg: Message) {
     match original_msg.body {
         MessageBody::Init { msg_id, .. } => {
             let reply = Message {
@@ -26,15 +34,13 @@ pub fn send_init_reply(mut node: &mut Node, original_msg: Message) {
                     in_reply_to: msg_id,
                 },
             };
-            eprintln!("Sending reply: {reply:?}");
-            send(&mut node, &reply);
-            eprintln!("Finished sending reply: {reply:?}");
+            node.send(&reply);
         }
         _ => panic!("Cannot send an init_ok reply to a non-init message: {original_msg:?}"),
     }
 }
 
-pub fn send_echo_reply(mut node: &mut Node, original_msg: Message) {
+pub fn send_echo_reply(node: &mut Node, original_msg: Message) {
     match original_msg.body {
         MessageBody::Echo { msg_id, echo, .. } => {
             let reply = Message {
@@ -47,9 +53,7 @@ pub fn send_echo_reply(mut node: &mut Node, original_msg: Message) {
                 },
             };
 
-            eprintln!("Sending reply: {reply:?}");
-            send(&mut node, &reply);
-            eprintln!("Finished sending reply: {reply:?}");
+            node.send(&reply);
         }
         _ => panic!("Cannot send an echo reply to a non-echo message: {original_msg:?}"),
     }
