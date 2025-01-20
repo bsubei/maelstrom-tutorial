@@ -1,8 +1,8 @@
 mod node;
 mod protocol;
 
-use crate::node::{send_echo_reply, send_init_reply, Node};
-use crate::protocol::{Message, MessageBody};
+use node::{send_echo_reply, send_init_reply, send_topology_reply, Node};
+use protocol::{Message, MessageBody};
 use std::default::Default;
 use std::io;
 
@@ -15,11 +15,14 @@ fn main() {
         if let Ok(line) = line {
             let msg: Message = serde_json::from_str(&line).unwrap();
             match &msg.body {
-                MessageBody::Init { node_id, .. } => {
+                MessageBody::Init {
+                    node_id, node_ids, ..
+                } => {
                     node.log(&format!("Got Init message: {msg:?}"));
 
                     // Initialize our node.
                     node.id = node_id.clone();
+                    node.ids = node_ids.clone();
 
                     // Reply back with an init_ok.
                     send_init_reply(&mut node, msg);
@@ -28,6 +31,16 @@ fn main() {
                     node.log(&format!("Got Echo message: {msg:?}"));
 
                     send_echo_reply(&mut node, msg);
+                }
+                MessageBody::Topology { topology, .. } => {
+                    node.log(&format!("Got topology message: {msg:?}"));
+
+                    if let Some(neighbors) = topology.get(&node.id) {
+                        node.neighbor_ids = Some(neighbors.clone());
+                        node.log(&format!("Setting neighbors to {:?}", neighbors));
+                    }
+
+                    send_topology_reply(&mut node, msg);
                 }
                 _ => todo!(),
             };

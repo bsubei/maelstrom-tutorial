@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -22,6 +23,15 @@ pub enum MessageBody {
         msg_id: Option<usize>,
         in_reply_to: Option<usize>,
         echo: String,
+    },
+    Topology {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+        topology: HashMap<String, Vec<String>>,
+    },
+    TopologyOk {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
     },
 }
 
