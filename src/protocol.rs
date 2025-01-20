@@ -33,6 +33,24 @@ pub enum MessageBody {
         msg_id: Option<usize>,
         in_reply_to: Option<usize>,
     },
+    Broadcast {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+        message: usize,
+    },
+    BroadcastOk {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+    },
+    Read {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+    },
+    ReadOk {
+        msg_id: Option<usize>,
+        in_reply_to: Option<usize>,
+        messages: Vec<usize>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -1,7 +1,7 @@
 mod node;
 mod protocol;
 
-use node::{send_echo_reply, send_init_reply, send_topology_reply, Node};
+use node::{send_ok_reply, Node};
 use protocol::{Message, MessageBody};
 use std::default::Default;
 use std::io;
@@ -30,13 +30,13 @@ fn main() {
                         node.ids = node_ids.clone();
 
                         // Reply back with an init_ok.
-                        send_init_reply(&mut node, msg);
+                        send_ok_reply(&mut node, msg);
                     }
                     MessageBody::Echo { .. } => {
                         let mut node = node_ref.lock().unwrap();
                         node.log(&format!("Got Echo message: {msg:?}"));
 
-                        send_echo_reply(&mut node, msg);
+                        send_ok_reply(&mut node, msg);
                     }
                     MessageBody::Topology { topology, .. } => {
                         let mut node = node_ref.lock().unwrap();
@@ -47,7 +47,52 @@ fn main() {
                             node.log(&format!("Setting neighbors to {:?}", neighbors));
                         }
 
-                        send_topology_reply(&mut node, msg);
+                        send_ok_reply(&mut node, msg);
+                    }
+                    MessageBody::Broadcast {
+                        msg_id, message, ..
+                    } => {
+                        let mut node = node_ref.lock().unwrap();
+                        node.log(&format!("Got broadcast message: {msg:?}"));
+
+                        if !node.messages.contains(message) {
+                            // Record this message.
+                            node.messages.insert(message.clone());
+
+                            // Gossip to neighbors.
+                            let messages = if let Some(neighbors) = &node.neighbor_ids {
+                                neighbors
+                                    .iter()
+                                    .map(|neighbor| Message {
+                                        src: node.id.clone(),
+                                        dest: neighbor.clone(),
+                                        body: MessageBody::Broadcast {
+                                            msg_id: Some(node.next_msg_id),
+                                            in_reply_to: *msg_id,
+                                            message: message.clone(),
+                                        },
+                                    })
+                                    .collect()
+                            } else {
+                                vec![]
+                            };
+                            for message in messages {
+                                node.send(&message);
+                            }
+                        }
+
+                        // Reply with an ok.
+                        send_ok_reply(&mut node, msg);
+                    }
+                    MessageBody::BroadcastOk { .. } => {
+                        let mut node = node_ref.lock().unwrap();
+                        node.log(&format!("Got broadcast_ok message: {msg:?}"));
+                    }
+                    MessageBody::Read { .. } => {
+                        let mut node = node_ref.lock().unwrap();
+                        node.log(&format!("Got read message: {msg:?}"));
+
+                        send_ok_reply(&mut node, msg);
                     }
                     _ => todo!(),
                 };
