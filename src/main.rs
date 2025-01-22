@@ -59,10 +59,11 @@ fn main() {
                             // Record this message.
                             node.messages.insert(message.clone());
 
-                            // Gossip to neighbors.
+                            // Gossip to neighbors except the src of this originating broadcast.
                             let messages = if let Some(neighbors) = &node.neighbor_ids {
                                 neighbors
                                     .iter()
+                                    .filter(|neighbor| **neighbor != msg.src)
                                     .map(|neighbor| Message {
                                         src: node.id.clone(),
                                         dest: neighbor.clone(),
