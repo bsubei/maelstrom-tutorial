@@ -6,97 +6,129 @@ use protocol::{Message, MessageBody};
 use std::default::Default;
 use std::io;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 fn main() {
     let stdin = io::stdin();
 
     let node = Arc::new(Mutex::<Node>::new(Default::default()));
 
+    let retry_these = Arc::new(Mutex::new(Vec::<Message>::new()));
+
+    // Spawn a thread that keeps checking retry_these and sends those messages.
+    std::thread::spawn({
+        let retry_these = retry_these.clone();
+        let node = node.clone();
+        move || loop {
+            for message in retry_these.lock().unwrap().iter() {
+                node.lock().unwrap().send(message);
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    });
+
     for line in stdin.lines() {
         if let Ok(line) = line {
             let msg: Message = serde_json::from_str(&line).unwrap();
 
-            let node_ref = node.clone();
-            std::thread::spawn(move || {
-                match &msg.body {
-                    MessageBody::Init {
-                        node_id, node_ids, ..
-                    } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got Init message: {msg:?}"));
+            std::thread::spawn({
+                // TODO fix the double shadowing nonsense
+                let node = node.clone();
+                let retry_these = retry_these.clone();
+                move || {
+                    match &msg.body {
+                        MessageBody::Init {
+                            node_id, node_ids, ..
+                        } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got Init message: {msg:?}"));
 
-                        // Initialize our node.
-                        node.id = node_id.clone();
-                        node.ids = node_ids.clone();
+                            // Initialize our node.
+                            node.id = node_id.clone();
+                            node.ids = node_ids.clone();
 
-                        // Reply back with an init_ok.
-                        send_ok_reply(&mut node, msg);
-                    }
-                    MessageBody::Echo { .. } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got Echo message: {msg:?}"));
-
-                        send_ok_reply(&mut node, msg);
-                    }
-                    MessageBody::Topology { topology, .. } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got topology message: {msg:?}"));
-
-                        if let Some(neighbors) = topology.get(&node.id) {
-                            node.neighbor_ids = Some(neighbors.clone());
-                            node.log(&format!("Setting neighbors to {:?}", neighbors));
+                            // Reply back with an init_ok.
+                            send_ok_reply(&mut node, msg);
                         }
+                        MessageBody::Echo { .. } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got Echo message: {msg:?}"));
 
-                        send_ok_reply(&mut node, msg);
-                    }
-                    MessageBody::Broadcast {
-                        msg_id, message, ..
-                    } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got broadcast message: {msg:?}"));
+                            send_ok_reply(&mut node, msg);
+                        }
+                        MessageBody::Topology { topology, .. } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got topology message: {msg:?}"));
 
-                        if !node.messages.contains(message) {
-                            // Record this message.
-                            node.messages.insert(message.clone());
+                            if let Some(neighbors) = topology.get(&node.id) {
+                                node.neighbor_ids = Some(neighbors.clone());
+                                node.log(&format!("Setting neighbors to {:?}", neighbors));
+                            }
 
-                            // Gossip to neighbors except the src of this originating broadcast.
-                            let messages = if let Some(neighbors) = &node.neighbor_ids {
-                                neighbors
-                                    .iter()
-                                    .filter(|neighbor| **neighbor != msg.src)
-                                    .map(|neighbor| Message {
-                                        src: node.id.clone(),
-                                        dest: neighbor.clone(),
-                                        body: MessageBody::Broadcast {
-                                            msg_id: Some(node.next_msg_id),
-                                            in_reply_to: *msg_id,
-                                            message: message.clone(),
-                                        },
-                                    })
-                                    .collect()
-                            } else {
-                                vec![]
-                            };
-                            for message in messages {
-                                node.send(&message);
+                            send_ok_reply(&mut node, msg);
+                        }
+                        MessageBody::Broadcast {
+                            msg_id,
+                            message: number,
+                            ..
+                        } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got broadcast message: {msg:?}"));
+
+                            if !node.messages.contains(number) {
+                                // Record this message.
+                                node.messages.insert(*number);
+
+                                // Gossip to neighbors except the src of this originating broadcast.
+                                if let Some(neighbors) = node.neighbor_ids.clone() {
+                                    for neighbor in
+                                        neighbors.iter().filter(|neighbor| **neighbor != msg.src)
+                                    {
+                                        let message: Message = Message {
+                                            src: node.id.clone(),
+                                            dest: neighbor.clone(),
+                                            body: MessageBody::Broadcast {
+                                                msg_id: Some(node.next_msg_id),
+                                                in_reply_to: *msg_id,
+                                                message: *number,
+                                            },
+                                        };
+
+                                        // Send the gossip message to the neighbor. This also increments node.next_msg_id.
+                                        node.send(&message);
+                                        node.next_msg_id += 1;
+
+                                        // Add this message to be retried later.
+                                        retry_these.lock().unwrap().push(message);
+                                    }
+                                }
+                                // No neighbors, do nothing.
+                            }
+
+                            // Reply with an ok.
+                            send_ok_reply(&mut node, msg);
+                        }
+                        MessageBody::BroadcastOk { in_reply_to, .. } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got broadcast_ok message: {msg:?}"));
+
+                            // Remove this message from the retry_these list.
+                            if let Some(in_reply_to) = in_reply_to {
+                                retry_these
+                                    .lock()
+                                    .unwrap()
+                                    .retain(|msg| msg.get_msg_id().unwrap() != *in_reply_to);
                             }
                         }
+                        MessageBody::Read { .. } => {
+                            let mut node = node.lock().unwrap();
+                            node.log(&format!("Got read message: {msg:?}"));
 
-                        // Reply with an ok.
-                        send_ok_reply(&mut node, msg);
-                    }
-                    MessageBody::BroadcastOk { .. } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got broadcast_ok message: {msg:?}"));
-                    }
-                    MessageBody::Read { .. } => {
-                        let mut node = node_ref.lock().unwrap();
-                        node.log(&format!("Got read message: {msg:?}"));
-
-                        send_ok_reply(&mut node, msg);
-                    }
-                    _ => todo!(),
-                };
+                            send_ok_reply(&mut node, msg);
+                        }
+                        _ => todo!(),
+                    };
+                }
             });
         }
     }

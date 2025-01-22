@@ -59,3 +59,20 @@ pub struct Message {
     pub dest: String,
     pub body: MessageBody,
 }
+
+impl Message {
+    pub fn get_msg_id(&self) -> Option<usize> {
+        match self.body {
+            MessageBody::Init { msg_id, .. } => msg_id,
+            MessageBody::InitOk { msg_id, .. } => msg_id,
+            MessageBody::Echo { msg_id, .. } => msg_id,
+            MessageBody::EchoOk { msg_id, .. } => msg_id,
+            MessageBody::Topology { msg_id, .. } => msg_id,
+            MessageBody::TopologyOk { msg_id, .. } => msg_id,
+            MessageBody::Broadcast { msg_id, .. } => msg_id,
+            MessageBody::BroadcastOk { msg_id, .. } => msg_id,
+            MessageBody::Read { msg_id, .. } => msg_id,
+            MessageBody::ReadOk { msg_id, .. } => msg_id,
+        }
+    }
+}

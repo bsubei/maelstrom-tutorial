@@ -1,5 +1,5 @@
 use crate::protocol::{Message, MessageBody};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::default::Default;
 
 #[derive(Default)]
@@ -19,8 +19,6 @@ impl Node {
     }
 
     pub fn send(&mut self, msg: &Message) -> () {
-        self.next_msg_id += 1;
-
         self.log(&format!("Sending reply: {msg:?}"));
 
         println!("{}", serde_json::to_string(&msg).unwrap());
@@ -29,7 +27,6 @@ impl Node {
     }
 }
 
-// TODO clean up these send_*_reply functions and just use a handle function with a big match on the message body type.
 pub fn send_ok_reply(node: &mut Node, original_msg: Message) {
     let reply = match original_msg.body {
         MessageBody::Init { msg_id, .. } => Message {
@@ -77,4 +74,5 @@ pub fn send_ok_reply(node: &mut Node, original_msg: Message) {
         _ => unimplemented!("Cannot send a reply to this message: {original_msg:?}"),
     };
     node.send(&reply);
+    node.next_msg_id += 1;
 }
