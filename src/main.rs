@@ -1,7 +1,7 @@
 mod node;
 mod protocol;
 
-use node::{send_ok_reply, Node};
+use node::{log, send, send_ok_reply, Node};
 use protocol::{Message, MessageBody};
 use std::default::Default;
 use std::io;
@@ -18,10 +18,9 @@ fn main() {
     // Spawn a thread that keeps checking retry_these and sends those messages.
     std::thread::spawn({
         let retry_these = retry_these.clone();
-        let node = node.clone();
         move || loop {
             for message in retry_these.lock().unwrap().iter() {
-                node.lock().unwrap().send(message);
+                send(message);
             }
             std::thread::sleep(Duration::from_secs(1));
         }
@@ -41,7 +40,7 @@ fn main() {
                             node_id, node_ids, ..
                         } => {
                             let mut node = node.lock().unwrap();
-                            node.log(&format!("Got Init message: {msg:?}"));
+                            log(&format!("Got Init message: {msg:?}"));
 
                             // Initialize our node.
                             node.id = node_id.clone();
@@ -52,17 +51,17 @@ fn main() {
                         }
                         MessageBody::Echo { .. } => {
                             let mut node = node.lock().unwrap();
-                            node.log(&format!("Got Echo message: {msg:?}"));
+                            log(&format!("Got Echo message: {msg:?}"));
 
                             send_ok_reply(&mut node, msg);
                         }
                         MessageBody::Topology { topology, .. } => {
                             let mut node = node.lock().unwrap();
-                            node.log(&format!("Got topology message: {msg:?}"));
+                            log(&format!("Got topology message: {msg:?}"));
 
                             if let Some(neighbors) = topology.get(&node.id) {
                                 node.neighbor_ids = Some(neighbors.clone());
-                                node.log(&format!("Setting neighbors to {:?}", neighbors));
+                                log(&format!("Setting neighbors to {:?}", neighbors));
                             }
 
                             send_ok_reply(&mut node, msg);
@@ -73,8 +72,9 @@ fn main() {
                             ..
                         } => {
                             let mut node = node.lock().unwrap();
-                            node.log(&format!("Got broadcast message: {msg:?}"));
+                            log(&format!("Got broadcast message: {msg:?}"));
 
+                            // If we haven't seen this broadcast message before
                             if !node.messages.contains(number) {
                                 // Record this message.
                                 node.messages.insert(*number);
@@ -95,9 +95,10 @@ fn main() {
                                         };
 
                                         // Send the gossip message to the neighbor. This also increments node.next_msg_id.
-                                        node.send(&message);
+                                        send(&message);
                                         node.next_msg_id += 1;
 
+                                        // TODO this is a nested lock and is error prone. Avoid this pattern.
                                         // Add this message to be retried later.
                                         retry_these.lock().unwrap().push(message);
                                     }
@@ -109,9 +110,7 @@ fn main() {
                             send_ok_reply(&mut node, msg);
                         }
                         MessageBody::BroadcastOk { in_reply_to, .. } => {
-                            let mut node = node.lock().unwrap();
-                            node.log(&format!("Got broadcast_ok message: {msg:?}"));
-
+                            log(&format!("Got broadcast_ok message: {msg:?}"));
                             // Remove this message from the retry_these list.
                             if let Some(in_reply_to) = in_reply_to {
                                 retry_these
@@ -122,7 +121,7 @@ fn main() {
                         }
                         MessageBody::Read { .. } => {
                             let mut node = node.lock().unwrap();
-                            node.log(&format!("Got read message: {msg:?}"));
+                            log(&format!("Got read message: {msg:?}"));
 
                             send_ok_reply(&mut node, msg);
                         }

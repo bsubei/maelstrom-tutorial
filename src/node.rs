@@ -1,5 +1,5 @@
 use crate::protocol::{Message, MessageBody};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::default::Default;
 
 #[derive(Default)]
@@ -13,18 +13,16 @@ pub struct Node {
     pub messages: HashSet<usize>,
 }
 
-impl Node {
-    pub fn log(&mut self, text: &str) -> () {
-        eprintln!("{}", text);
-    }
+pub fn log(text: &str) -> () {
+    eprintln!("{}", text);
+}
 
-    pub fn send(&mut self, msg: &Message) -> () {
-        self.log(&format!("Sending reply: {msg:?}"));
+pub fn send(msg: &Message) -> () {
+    log(&format!("Sending reply: {msg:?}"));
 
-        println!("{}", serde_json::to_string(&msg).unwrap());
+    println!("{}", serde_json::to_string(&msg).unwrap());
 
-        self.log(&format!("Finished sending reply: {msg:?}"));
-    }
+    log(&format!("Finished sending reply: {msg:?}"));
 }
 
 pub fn send_ok_reply(node: &mut Node, original_msg: Message) {
@@ -73,6 +71,6 @@ pub fn send_ok_reply(node: &mut Node, original_msg: Message) {
         },
         _ => unimplemented!("Cannot send a reply to this message: {original_msg:?}"),
     };
-    node.send(&reply);
+    send(&reply);
     node.next_msg_id += 1;
 }
