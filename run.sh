@@ -2,6 +2,8 @@
 
 if [[ "$1" == "nemesis" ]]; then 
     cargo build && ./maelstrom/maelstrom test -w broadcast --bin ./target/debug/maelstrom-tutorial --time-limit 20 --topology line --nemesis partition --log-stderr 
+elif [ "$1" = "basic" ]; then
+    cargo build && ./maelstrom/maelstrom test -w broadcast --bin ./target/debug/maelstrom-tutorial --time-limit 20 --log-stderr 
 elif [ "$1" = "loop" ]; then
     for i in {1..10}; do
         echo "Attempt $i"
